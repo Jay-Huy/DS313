@@ -1,0 +1,6 @@
+- Check lại xem audio có mask hay không
+
+- Các việc cần làm:
++ Chạy DataLoader để xem như thế nào (Ngày mai)
++ Code Train function, Infer Function, Evaluation Function (T5 đi với Mthu, Lưu ý cái cơ chế shifted right của nó)
++ Chạy thử 1 structure để xem kết quả (T6 và T7, CN check kết quả)
