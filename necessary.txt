@@ -1,0 +1,12 @@
+- For coding:
++ VSCode
++ Anaconda (Pytorch, Transformers, ...)
++ Github Copilot
+
+- For Office:
+- Slack
+- Gmail
+
+- For Gaming:
++ LoL
++ Elden Ring
