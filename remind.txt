@@ -1,0 +1,40 @@
+- Check lại xem audio có mask hay không
+
+- Các việc cần làm:
++ Chạy DataLoader để xem như thế nào (Ngày mai)
++ Code Train function, Infer Function, Evaluation Function (T5 đi với Mthu, Lưu ý cái cơ chế shifted right của nó)
++ Chạy thử 1 structure để xem kết quả (T6 và T7, CN check kết quả)
+
+---------------10/4/2025 Note----------------
+- Check DataLoader
+- Check cơ chế shifted-right-input có đúng hay chưa
+- Code cơ chế tính weight và loss của model
+- Phải kiểm tra lại kĩ càng input_ids, shifted_right_outputs, outputs, predictions (nếu không thì tính loss sẽ bị sai)
+- Check 1 batch chạy bao nhiêu lâu để tính thời gian train 
+- Check lại logic của loss_fn và cer xem đã đúng chưa
+
+---------------11/4/2025 Note----------------
+- Init Data + Tokneizer
+- Init Model (Done)
+- Init Optimizer, Criterion, Scheduler, ...
+- Train function, Infer function
+
+
+---------------Dataloader Note----------------
+A. 1 Batch của DataLoader cần có các item là: transcript_paths, wav_paths, transcripts, downsampled_features, tokenized_transcripts
+Kiểu return trong collate_fn sẽ như là:
+return {
+    'transcript_paths': transcript_paths,
+    'wav_paths': wav_paths,
+    'transcripts': transcripts,
+    'downsampled_features': downsampled_features,
+    'tokenized_transcripts': tokenized_transcripts
+}
+
+B. Không cần tạo ra bộ vocab và tokenizer riêng, mình xài cái này: AutoTokenizer.from_pretrained("bert-base-chinese")
+Ông muốn padding hay eos_token hay bos_token gì thì cũng xài của tokenizer luôn. 
+Nhưng mà ông load ở ngoài rồi truyền vào dataset nha, đừng load trong dataset tại lúc train vẫn cần gọi lại tokenizer.
+
+C. Trích xuất đặc trưng luôn trong hàm collate_fn : 
+Kiểu cái downsampled_features là cái mà mình đã làm xong xuôi hết luôn rồi á, nó chỉ cần truyền vào và train thôi, không cần chạy gì thêm cho nó. 
+Làm vậy thì code của mình sẽ sạch hơn á ông. Còn lại ông muốn để shape dạng (B, C, T, F) hay (B, T, C*f) cũng được
