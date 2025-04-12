@@ -13,6 +13,7 @@ import argparse
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Train ASR Model")
 parser.add_argument("--structure", type=str, default='A', choices=['A', 'B', 'C'], help="Number of epochs for training")
+parser.add_argument("--batch_size", type=int, default=16, help="Number of epochs for training")
 parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training")
 parser.add_argument("--transcript_path", type=str, required=True, help="Transcript path")
 parser.add_argument("--wav_path", type=str, required=True, help="Wav path")
@@ -33,7 +34,7 @@ if not available_splits:
 
 # Configuration
 TOKENIZER_NAME = "bert-base-chinese"
-BATCH_SIZE = 32
+BATCH_SIZE = args.batch_size
 NUM_WORKERS = args.num_workers
 RESHAPE_VGG_OUTPUT = True
 
