@@ -92,13 +92,13 @@ def main():
     elif args.subset == 2:
         train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
 
-    train_dataloader = DataLoader(
-        train_dataloader,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        collate_fn=pad_collate_instance,
-        num_workers=NUM_WORKERS
-    )
+    # train_dataloader = DataLoader(
+    #     train_dataloader,
+    #     batch_size=BATCH_SIZE,
+    #     shuffle=True,
+    #     collate_fn=pad_collate_instance,
+    #     num_workers=NUM_WORKERS
+    # )
     val_dataloader = dataloaders['dev']  # Use 'dev' split for validation
     print(f'Subset Train Dataloader Length: {len(train_dataloader)}')
     print(f'Val Dataloader Length: {len(val_dataloader)}')
