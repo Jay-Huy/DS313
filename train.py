@@ -128,7 +128,7 @@ def main():
         if scheduler:
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         print(f"Checkpoint loaded from {checkpoint_path}")
-        return checkpoint.get('epoch', 0)
+        return checkpoint.get('start_epoch', 0)
 
     # Initialize Model
     model = ASRModel(model_dim=768, mode=args.structure).to(device)
@@ -162,7 +162,6 @@ def main():
         scheduler=scheduler,
         epochs=args.epochs,
         cer=cer,
-        start_epoch=start_epoch  # Pass the starting epoch
     )
 
     # Save the Model
@@ -172,6 +171,7 @@ def main():
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
         'epoch': args.epochs,
+        'start_epoch": args.epochs + start_epoch,
         'train_metrics': train_metrics_list,
         'val_metrics': val_metrics_list
     }, save_path)
