@@ -63,7 +63,6 @@ def main():
         pad_idx=PAD_IDX,
         vgg_model=vgg_model,
         tokenizer=tokenizer,
-        device=device,
         reshape_features=RESHAPE_VGG_OUTPUT
     )
 
