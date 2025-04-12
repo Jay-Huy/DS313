@@ -126,7 +126,7 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
     if scheduler:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     print(f"Checkpoint loaded from {checkpoint_path}")
-    return checkpoint.get('epoch', 0)
+    return checkpoint.get('start_epochs', 0)
 
 # Initialize Training Parameters
 criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
@@ -139,6 +139,7 @@ start_epoch = 0
 if args.checkpoint_path:
     if os.path.exists(args.checkpoint_path):
         start_epoch = load_checkpoint(args.checkpoint_path, model, optimizer, scheduler)
+        print(f'The model have been trained on {start_epoch} epochs')
     else:
         print(f"Checkpoint path {args.checkpoint_path} does not exist. Starting training from scratch.")
 
@@ -153,7 +154,6 @@ train_metrics_list, val_metrics_list = train(
     scheduler=scheduler,
     epochs=args.epochs,
     cer=cer,
-    start_epoch=start_epoch  # Pass the starting epoch
 )
 
 # Save the Model
@@ -162,7 +162,8 @@ torch.save({
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'scheduler_state_dict': scheduler.state_dict(),
-    'epoch': args.epochs,
+    'training_epoch': args.epochs,
+    'start_epochs': start_epoch + args.epochs,
     'train_metrics': train_metrics_list,
     'val_metrics': val_metrics_list
 }, save_path)
