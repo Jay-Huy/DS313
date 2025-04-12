@@ -112,9 +112,9 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         for k in batch:
             batch[k] = batch[k].to(device=device, non_blocking=True)
 
-        input_ids = batch['input_ids']  # Batch_size, seq_length
+        input_ids = batch['transcript_ids']  # Batch_size, seq_length
         downsampled_features = batch['downsampled_features']  # Batch_size, seq_length, feature_dim
-        attention_mask = batch['attention_mask']  # Batch_size, seq_length
+        attention_mask = batch['transcript_attention_mask']  # Batch_size, seq_length
 
         # Shifted left input_ids for loss calculation
         shifted_left_outputs = torch.cat([input_ids[:, 1:], torch.full((input_ids.size(0), 1), tokenizer.pad_token_id, dtype=torch.long, device=device)], dim=1)
@@ -189,9 +189,9 @@ def inference(model, tokenizer, test_dataloader, cer):
             for k in batch:
                 batch[k] = batch[k].to(device=device, non_blocking=True)
 
-            input_ids = batch['input_ids']
-            audio_features = batch['audio_features']
-            attention_mask = batch['attention_mask']
+            input_ids = batch['transcript_ids']
+            audio_features = batch['downsampled_features']
+            attention_mask = batch['transcript_attention_mask']
 
             # Forward pass
             outputs = model(input_ids, attention_mask, audio_features)
