@@ -21,6 +21,10 @@ parser.add_argument("--num_workers", type=int, default=1, help="Num workers")
 parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Save Path")
 args = parser.parse_args()
 
+# MultiProcessing
+import torch.multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 # --- Dataset and Dataloader Configuration ---
 AISHELL_TRANSCRIPT_PATH = args.transcript_path
 AISHELL_WAV_ROOT = args.wav_path
