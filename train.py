@@ -1,3 +1,4 @@
+%%writefile train.py
 import os
 import torch
 from torch.optim import Adam
@@ -171,7 +172,7 @@ def main():
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
         'epoch': args.epochs,
-        'start_epoch": args.epochs + start_epoch,
+        'start_epoch': args.epochs + start_epoch,
         'train_metrics': train_metrics_list,
         'val_metrics': val_metrics_list
     }, save_path)
