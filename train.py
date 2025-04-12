@@ -10,6 +10,9 @@ from utils import train
 from dataset import AISHELL1Dataset, PadCollate, PretrainedVGGExtractor
 import argparse
 
+import torch.multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Train ASR Model")
 parser.add_argument("--transcript_path", type=str, required=True, help="Transcript path")
@@ -102,9 +105,6 @@ def get_scheduler(optimizer, num_warmup_steps):
 
     return LambdaLR(optimizer, lr_lambda)
 
-# Initialize Model
-model = ASRModel(model_dim=768, mode=args.structure).to(device)
-
 # Load Checkpoint for Continuous Training
 def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
     """
@@ -128,6 +128,12 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
     print(f"Checkpoint loaded from {checkpoint_path}")
     return checkpoint.get('start_epochs', 0)
 
+# Initialize Model
+model = ASRModel(model_dim=768, mode=args.structure).to(device)
+if torch.cuda.device_count() > 1: 
+    print(f"Using {torch.cuda.device_count()} GPUs")
+    model = torch.nn.DataParallel(model)
+    
 # Initialize Training Parameters
 criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
 optimizer = Adam(model.parameters())
