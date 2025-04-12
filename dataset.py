@@ -123,17 +123,16 @@ class AISHELL1Dataset(Dataset):
 
 
 class PadCollate:
-    def __init__(self, pad_idx, vgg_model, tokenizer, device, reshape_features=True):
+    def __init__(self, pad_idx, vgg_model, tokenizer, reshape_features=True):
         self.pad_idx = pad_idx
-        self.vgg_model = vgg_model.to(device)
+        self.vgg_model = vgg_model
         self.vgg_model.eval()
         self.tokenizer = tokenizer
-        self.device = device
         self.reshape_features = reshape_features
         
         self.SAMPLE_RATE = 16000
-        self.N_MELS = 80 # Số lượng FBank mel bins
-        self.FRAME_LENGTH = 25 # ms
+        self.N_MELS = 80  # Số lượng FBank mel bins
+        self.FRAME_LENGTH = 25  # ms
         self.FRAME_SHIFT = 10  # ms
 
     def __call__(self, batch):
@@ -153,7 +152,7 @@ class PadCollate:
         # Pad FBank features
         feature_lengths = torch.tensor(feature_lengths, dtype=torch.long)
         padded_fbanks = pad_sequence(fbank_features, batch_first=True, padding_value=0.0)
-        vgg_input = padded_fbanks.unsqueeze(1).float().to(self.device)
+        vgg_input = padded_fbanks.unsqueeze(1).float()
 
         # Downsample features using VGG
         with torch.no_grad():
@@ -168,7 +167,7 @@ class PadCollate:
         transcript_ids = tokenized['input_ids']
         transcript_attention_mask = tokenized['attention_mask']
 
-        # Return batch dictionary
+        # Return batch dictionary (on CPU)
         return {
             'downsampled_features': downsampled_features,       # Tensor (B, T', C*F) or (B, C, T', F)
             'original_transcript': list(transcripts),          # List[str]
