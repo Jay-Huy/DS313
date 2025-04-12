@@ -84,6 +84,8 @@ def main():
 
     train_dataloader = dataloaders['train']  # Use 'train' split for training
     val_dataloader = dataloaders['dev']  # Use 'dev' split for validation
+    print(f'Train Dataloader Length: {len(train_dataloader)}')
+    print(f'Val Dataloader Length: {len(val_dataloader)}')
 
     # --- Training Logic ---
     cer = load("cer")
