@@ -86,19 +86,19 @@ def main():
     # Modify the logic for training on subsets
     train_dataloader = dataloaders['train']
     print(f'Full Train Dataloader Length: {len(train_dataloader)}')
-    subset_size = len(train_dataloader) // 2  # Divide the dataloader into two subsets
+    subset_size = len(train_dataloader.dataset) // 2  # Divide the dataloader into two subsets
     if args.subset == 1:
         train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
     elif args.subset == 2:
         train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
 
-    # train_dataloader = DataLoader(
-    #     train_dataloader,
-    #     batch_size=BATCH_SIZE,
-    #     shuffle=True,
-    #     collate_fn=pad_collate_instance,
-    #     num_workers=NUM_WORKERS
-    # )
+    train_dataloader = DataLoader(
+        train_dataloader,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        collate_fn=pad_collate_instance,
+        num_workers=NUM_WORKERS
+    )
     val_dataloader = dataloaders['dev']  # Use 'dev' split for validation
     print(f'Subset Train Dataloader Length: {len(train_dataloader)}')
     print(f'Val Dataloader Length: {len(val_dataloader)}')
