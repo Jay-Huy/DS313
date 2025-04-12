@@ -111,7 +111,8 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         # Move batch to device
         if i == 50: break
         for k in batch:
-            batch[k] = batch[k].to(device=device, non_blocking=True)
+            if batch[k] == torch.Tensor:
+                batch[k] = batch[k].to(device=device, non_blocking=True)
 
         input_ids = batch['transcript_ids']  # Batch_size, seq_length
         downsampled_features = batch['downsampled_features']  # Batch_size, seq_length, feature_dim
@@ -188,7 +189,8 @@ def inference(model, tokenizer, test_dataloader, cer):
     with torch.no_grad():
         for batch in tqdm(test_dataloader):
             for k in batch:
-                batch[k] = batch[k].to(device=device, non_blocking=True)
+                if batch[k] == torch.Tensor:
+                    batch[k] = batch[k].to(device=device, non_blocking=True)
 
             input_ids = batch['transcript_ids']
             audio_features = batch['downsampled_features']
