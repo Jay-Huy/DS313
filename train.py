@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--wav_path", type=str, required=True, help="Wav path")
     parser.add_argument("--num_workers", type=int, default=1, help="Number of workers for DataLoader")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--subset", type=int, choices=[1, 2], required=True, help="Subset of train_dataloader to train on (1 or 2)")
     parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Path to save the model checkpoint")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
     args = parser.parse_args()
@@ -82,7 +83,21 @@ def main():
             num_workers=NUM_WORKERS
         )
 
-    train_dataloader = dataloaders['train']  # Use 'train' split for training
+    # Modify the logic for training on subsets
+    train_dataloader = dataloaders['train']
+    subset_size = len(train_dataloader) // 2  # Divide the dataloader into two subsets
+    if args.subset == 1:
+        train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
+    elif args.subset == 2:
+        train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
+
+    train_dataloader = DataLoader(
+        train_dataloader,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        collate_fn=pad_collate_instance,
+        num_workers=NUM_WORKERS
+    )
     val_dataloader = dataloaders['dev']  # Use 'dev' split for validation
     print(f'Train Dataloader Length: {len(train_dataloader)}')
     print(f'Val Dataloader Length: {len(val_dataloader)}')
@@ -129,7 +144,7 @@ def main():
         if scheduler:
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         print(f"Checkpoint loaded from {checkpoint_path}")
-        return checkpoint.get('start_epoch', 0)
+        return checkpoint.get('trained_epoch', 0)
 
     # Initialize Model
     model = ASRModel(model_dim=768, mode=args.structure).to(device)
@@ -166,13 +181,19 @@ def main():
     )
 
     # Save the Model
-    save_path = args.save_path
+    save_path = f"structure_{args.structure}_epochs_{args.epochs + start_epoch}_subset_{args.subset}.pth"
+    if args.subset == 1:
+        trained_epoch = start_epoch
+    else:
+        trained_epoch = args.epochs + start_epoch
+
+    print(f"Saving model checkpoint to {save_path}")
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
         'epoch': args.epochs,
-        'start_epoch': args.epochs + start_epoch,
+        'trained_epoch': trained_epoch,
         'train_metrics': train_metrics_list,
         'val_metrics': val_metrics_list
     }, save_path)
