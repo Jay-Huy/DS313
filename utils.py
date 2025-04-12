@@ -107,8 +107,9 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
     total_cer = 0
     num_batches = len(data_loader)
 
-    for batch in tqdm(data_loader):
+    for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
+        if i == 50: break
         for k in batch:
             batch[k] = batch[k].to(device=device, non_blocking=True)
 
