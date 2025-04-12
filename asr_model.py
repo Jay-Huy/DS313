@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from src.contextual_encoder import Contextual_Encoder
-from src.decoder import Decoder
+from contextual_encoder import Contextual_Encoder
+from decoder import Decoder
 from transformers import AutoModel
 import torch
 

@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer
-from src.asr_model import ASRModel
+from asr_model import ASRModel
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from evaluate import load

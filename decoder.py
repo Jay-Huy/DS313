@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.decoder_layers import DecoderLayerA, DecoderLayerB, DecoderLayerC
+from decoder_layers import DecoderLayerA, DecoderLayerB, DecoderLayerC
 
 class Decoder(nn.Module):
     def __init__(self, embed_size = 768, vocab_size = 21128, num_layers = 6, heads = 6, dim_feedforward = 2048, dropout = 0.1, mode = 'A', embedding_layer = None):

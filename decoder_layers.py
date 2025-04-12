@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
-from src.utils import MultiHeadedDotAttention, FFN
+from utils import MultiHeadedDotAttention, FFN
 
 class DecoderLayerA(nn.Module):
     def __init__(self, embed_size, heads, dim_feedforward, dropout, casual = True):
