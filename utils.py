@@ -109,7 +109,6 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
-        if i == 20: break
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
         input_ids = batch['transcript_ids']  # Batch_size, seq_length
