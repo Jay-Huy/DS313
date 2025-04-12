@@ -195,14 +195,17 @@ def inference(model, tokenizer, test_dataloader, cer):
             input_ids = batch['transcript_ids']
             audio_features = batch['downsampled_features']
             attention_mask = batch['transcript_attention_mask']
-
+            
+            # Shifted left input_ids for loss calculation
+            shifted_left_outputs = torch.cat([input_ids[:, 1:], torch.full((input_ids.size(0), 1), tokenizer.pad_token_id, dtype=torch.long, device=device)], dim=1)
+        
             # Forward pass
             outputs = model(input_ids, attention_mask, audio_features)
             ids_prediction = outputs.argmax(dim=-1)
 
             # Decode predictions and references
             decoded_predictions = tokenizer.batch_decode(ids_prediction, skip_special_tokens=True)
-            decoded_references = tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+            decoded_references = tokenizer.batch_decode(shifted_left_outputs, skip_special_tokens=True)
 
             predictions.extend(decoded_predictions)
             references.extend(decoded_references)
