@@ -67,6 +67,7 @@ def main():
         reshape_features=RESHAPE_VGG_OUTPUT
     )
 
+    torch.manual_seed(42)
     # Create Datasets and Dataloaders
     datasets = {}
     dataloaders = {}
