@@ -210,3 +210,28 @@ def inference(model, tokenizer, test_dataloader, cer):
 
     cer_score = cer.compute(predictions=predictions, references=references)
     return cer_score, predictions, references
+
+def generate_tokens(tokenizer, model, downsampled_features, max_length=50):
+    # Initialize variables
+    model.eval()
+    first_token = torch.tensor([tokenizer.cls_token_id])  # Start with CLS token
+    attention_mask = torch.tensor([1])  # Start with attention mask for CLS token
+    print(f'First token is : {first_token.item()}')
+    
+    for i in range(max_length):  # Limit the maximum generation length
+        # Generate outputs from the model
+        outputs = model(first_token.unsqueeze(dim=0), attention_mask.unsqueeze(dim=0), downsampled_features)
+        predicted_tokens = outputs.argmax(dim=-1)  # Get the predicted token
+
+        last_predicted_tokens = predicted_tokens[:, -1]
+        print(f'The predicted token in step {i+1} is {last_predicted_tokens.item()}')
+        # Check if the generated token is the SEP token (stop condition)
+        if last_predicted_tokens.item() == tokenizer.sep_token_id:
+            break
+        
+        # Update first_token and attention_mask for the next iteration
+        first_token = torch.cat([first_token, last_predicted_tokens], dim=0)
+        print(f'The string used to generate new token is {first_token}\n')
+        attention_mask = torch.cat([attention_mask, torch.tensor([1])], dim=0)
+    
+    return first_token
