@@ -211,27 +211,65 @@ def inference(model, tokenizer, test_dataloader, cer):
     cer_score = cer.compute(predictions=predictions, references=references)
     return cer_score, predictions, references
 
-def generate_tokens(tokenizer, model, downsampled_features, max_length=50):
+def generate_tokens(tokenizer, model, batch, cer, max_length=50):
     # Initialize variables
     model.eval()
-    first_token = torch.tensor([tokenizer.cls_token_id])  # Start with CLS token
-    attention_mask = torch.tensor([1])  # Start with attention mask for CLS token
-    print(f'First token is : {first_token.item()}')
-    
+    first_token = torch.tensor([tokenizer.cls_token_id], device=batch['downsampled_features'].device)  # Start with CLS token
+    print(f'First_token: {first_token}')
+    attention_mask = torch.tensor([1], device=batch['downsampled_features'].device)  # Start with attention mask for CLS token
+    downsampled_features = batch['downsampled_features']
+    generated_tokens = []
+
     for i in range(max_length):  # Limit the maximum generation length
         # Generate outputs from the model
         outputs = model(first_token.unsqueeze(dim=0), attention_mask.unsqueeze(dim=0), downsampled_features)
         predicted_tokens = outputs.argmax(dim=-1)  # Get the predicted token
 
-        last_predicted_tokens = predicted_tokens[:, -1]
-        print(f'The predicted token in step {i+1} is {last_predicted_tokens.item()}')
+        last_predicted_token = predicted_tokens[:, -1]
+        print(f'The predicted token in step {i}: {last_predicted_token}')
+        generated_tokens.append(last_predicted_token.item())
+
         # Check if the generated token is the SEP token (stop condition)
-        if last_predicted_tokens.item() == tokenizer.sep_token_id:
+        if last_predicted_token.item() == tokenizer.sep_token_id:
             break
-        
+
         # Update first_token and attention_mask for the next iteration
-        first_token = torch.cat([first_token, last_predicted_tokens], dim=0)
-        print(f'The string used to generate new token is {first_token}\n')
-        attention_mask = torch.cat([attention_mask, torch.tensor([1])], dim=0)
-    
-    return first_token
+        first_token = torch.cat([first_token, last_predicted_token], dim=0)
+        print(f'The tokens for the next generation: {first_token}\n')
+        attention_mask = torch.cat([attention_mask, torch.tensor([1], device=attention_mask.device)], dim=0)
+
+    # Decode predictions and references
+    decoded_predictions = tokenizer.batch_decode(torch.tensor([generated_tokens]), skip_special_tokens=True)
+    decoded_references = tokenizer.batch_decode(batch['transcript_ids'].tolist(), skip_special_tokens=True)
+
+    # Compute CER score
+    cer_score = cer.compute(predictions=decoded_predictions, references=decoded_references)
+
+    return {
+        'decoded_predictions': decoded_predictions,
+        'decoded_references': decoded_references,
+        'cer_score': cer_score,
+    }
+
+def teacher_forcing_generate_tokens(tokenizer, model, batch, cer):
+    # Initialize variables
+    model.eval()
+    input_ids = batch['transcript_ids']
+    attention_mask = batch['transcript_attention_mask']
+    downsampled_features = batch['downsampled_features']
+    shifted_left_outputs = torch.cat([input_ids[:, 1:], torch.full((input_ids.size(0), 1), tokenizer.pad_token_id, dtype=torch.long, device=device)], dim=1)
+
+    # Forward pass
+    outputs = model(input_ids, attention_mask, downsampled_features)
+
+    # Decode predictions and references
+    ids_prediction = outputs.argmax(dim=-1)
+    decoded_predictions = tokenizer.batch_decode(ids_prediction, skip_special_tokens=True)
+    decoded_references = tokenizer.batch_decode(shifted_left_outputs, skip_special_tokens=True)
+    cer_score = cer.compute(predictions=decoded_predictions, references=decoded_references)
+
+    return {
+        'decoded_predictions': decoded_predictions,
+        'decoded_references': decoded_references,
+        'cer_score': cer_score,
+    }
