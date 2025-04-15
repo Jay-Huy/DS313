@@ -146,36 +146,32 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         'mean_cer': mean_cer,
     }
 
-def train(model, tokenizer, train_dataloader, val_dataloader, optimizer, criterion, scheduler, epochs, cer, model_dir=None):
+def train(model, tokenizer, train_dataloader, optimizer, criterion, scheduler, epochs, cer):
     train_metrics_list = []
-    val_metrics_list = []
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model.to(device)
     for epoch in range(1, epochs + 1):
         print(f"Epoch {epoch}/{epochs}")
         print("Training")
-        train_metrics = step(model=model, tokenizer=tokenizer, data_loader=train_dataloader, 
-                             optimizer=optimizer, criterion=criterion, device = device, cer= cer, train=True)
-        print("Validation")
-        val_metrics = step(model=model, tokenizer=tokenizer, data_loader=val_dataloader, 
-                           optimizer=optimizer, criterion=criterion, device = device, cer= cer, train=False)
+        train_metrics = step(
+            model=model,
+            tokenizer=tokenizer,
+            data_loader=train_dataloader,
+            optimizer=optimizer,
+            criterion=criterion,
+            device=device,
+            cer=cer,
+            train=True,
+        )
 
         scheduler.step()
 
         print(f"Train - Loss: {train_metrics['mean_loss']:.4f}, CER: {train_metrics['mean_cer']:.4f}")
-        print(f"Val   - Loss: {val_metrics['mean_loss']:.4f}, CER: {val_metrics['mean_cer']:.4f}")
 
         # Save metrics to lists
         train_metrics_list.append(train_metrics)
-        val_metrics_list.append(val_metrics)
 
-        # Early stopping (optional)
-        # early_stopping(val_metrics['mean_loss'], model, epoch, optimizer, scheduler, model_dir)
-        # if early_stopping.early_stop:
-        #     print("Early stopping")
-        #     break
-
-    return train_metrics_list, val_metrics_list
+    return train_metrics_list
 
 def inference(model, tokenizer, test_dataloader, cer):
     model.eval()
@@ -251,7 +247,7 @@ def generate_tokens(tokenizer, model, batch, cer, max_length=50):
         'cer_score': cer_score,
     }
 
-def teacher_forcing_generate_tokens(tokenizer, model, batch, cer):
+def teacher_forcing_generate_tokens(tokenizer, model, batch, cer, device):
     # Initialize variables
     model.eval()
     input_ids = batch['transcript_ids']

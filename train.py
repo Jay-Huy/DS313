@@ -1,6 +1,6 @@
 import os
 import torch
-from torch.optim import Adam
+from torch.optim import AdamW, Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--wav_path", type=str, required=True, help="Wav path")
     parser.add_argument("--num_workers", type=int, default=1, help="Number of workers for DataLoader")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
-    parser.add_argument("--subset", type=int, choices=[1, 2], required=True, help="Subset of train_dataloader to train on (1 or 2)")
+    parser.add_argument("--subset", type=int, choices=[0, 1, 2], default = 0, required=True, help="Subset of train_dataloader to train on (0 or 1 or 2)")
     parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Path to save the model checkpoint")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
     args = parser.parse_args()
@@ -72,55 +72,58 @@ def main():
     datasets = {}
     dataloaders = {}
     for split in available_splits:
-        datasets[split] = AISHELL1Dataset(
-            AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split=split
-        )
-        shuffle_data = (split == 'train')
-        dataloaders[split] = DataLoader(
-            datasets[split],
+        if split == 'train':
+            datasets[split] = AISHELL1Dataset(
+                AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split=split
+            )
+            shuffle_data = (split == 'train')
+            dataloaders[split] = DataLoader(
+                datasets[split],
+                batch_size=BATCH_SIZE,
+                shuffle=shuffle_data,
+                collate_fn=pad_collate_instance,
+                num_workers=NUM_WORKERS
+            )
+
+    if args.subset == 0:
+        train_dataloader = dataloaders['train']
+        print(f'Subset mode: {args.subset} - Full Train Dataloader Length: {len(train_dataloader)}')
+    else:
+        subset_size = len(train_dataloader.dataset) // 2  # Divide the dataloader into two subsets
+        if args.subset == 1:
+            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
+        elif args.subset == 2:
+            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
+
+        train_dataloader = DataLoader(
+            train_dataloader,
             batch_size=BATCH_SIZE,
-            shuffle=shuffle_data,
+            shuffle=True,
             collate_fn=pad_collate_instance,
             num_workers=NUM_WORKERS
         )
 
-    # Modify the logic for training on subsets
-    train_dataloader = dataloaders['train']
-    print(f'Full Train Dataloader Length: {len(train_dataloader)}')
-    subset_size = len(train_dataloader.dataset) // 2  # Divide the dataloader into two subsets
-    if args.subset == 1:
-        train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
-    elif args.subset == 2:
-        train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
-
-    train_dataloader = DataLoader(
-        train_dataloader,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        collate_fn=pad_collate_instance,
-        num_workers=NUM_WORKERS
-    )
-    val_dataloader = dataloaders['dev']  # Use 'dev' split for validation
-    print(f'Subset Train Dataloader Length: {len(train_dataloader)}')
-    print(f'Val Dataloader Length: {len(val_dataloader)}')
+        print(f'Subset mode: {args.subset} - Half Train Dataloader Length: {len(train_dataloader)}')
 
     # --- Training Logic ---
     cer = load("cer")
 
-    def get_scheduler(optimizer, num_warmup_steps):
+    def get_scheduler(optimizer, num_warmup_steps, start_step=0):
         """
         Create a learning rate scheduler with a warm-up strategy.
 
         Args:
             optimizer (torch.optim.Optimizer): The optimizer to apply the scheduler to.
             num_warmup_steps (int): Number of warm-up steps.
+            start_step (int): The step to resume from in continuous training.
 
         Returns:
             LambdaLR: A learning rate scheduler.
         """
         def lr_lambda(current_step):
-            if current_step < num_warmup_steps:
-                return float(current_step) / float(max(1, num_warmup_steps))
+            total_step = current_step + start_step
+            if total_step < num_warmup_steps:
+                return float(total_step) / float(max(1, num_warmup_steps))
             return 1.0
 
         return LambdaLR(optimizer, lr_lambda)
@@ -154,27 +157,32 @@ def main():
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = torch.nn.DataParallel(model)
         
-    # Initialize Training Parameters
+    # Initialize Criterion and Optimizer
     criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
-    optimizer = Adam(model.parameters())
+    optimizer = AdamW(model.parameters())
+
+    # Load Scheduler and Checkpoint
+    start_epoch = 0
+    # Load Schheduler
     num_warmup_steps = 12000
-    scheduler = get_scheduler(optimizer, num_warmup_steps)
+    steps_per_epoch = len(train_dataloader)
+
+    start_step = start_epoch * steps_per_epoch
+    scheduler = get_scheduler(optimizer, num_warmup_steps, start_step=start_step)
 
     # Load checkpoint if provided
-    start_epoch = 0
     if args.checkpoint_path:
         if os.path.exists(args.checkpoint_path):
             start_epoch = load_checkpoint(args.checkpoint_path, model, optimizer, scheduler)
             print(f'The model has been trained on {start_epoch} epochs')
         else:
             print(f"Checkpoint path {args.checkpoint_path} does not exist. Starting training from scratch.")
-
+    
     # Train the Model
-    train_metrics_list, val_metrics_list = train(
+    train_metrics_list = train(
         model=model,
         tokenizer=tokenizer,
         train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader,
         optimizer=optimizer,
         criterion=criterion,
         scheduler=scheduler,
@@ -197,7 +205,6 @@ def main():
         'epoch': args.epochs,
         'trained_epoch': trained_epoch,
         'train_metrics': train_metrics_list,
-        'val_metrics': val_metrics_list
     }, save_path)
 
 if __name__ == '__main__':

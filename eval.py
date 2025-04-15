@@ -7,6 +7,7 @@ from evaluate import load
 from utils import inference
 from dataset import AISHELL1Dataset, PadCollate, PretrainedVGGExtractor
 import argparse
+import json  # Add this import
 
 def main():
     # Parse command-line arguments
@@ -17,6 +18,8 @@ def main():
     parser.add_argument("--num_workers", type=int, default=1, help="Number of workers for DataLoader")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for evaluation")
     parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the trained model checkpoint")
+    parser.add_argument("--test_or_val", type=str, default="test", choices=["val", "test"], help="Split to evaluate on (val or test)")
+    parser.add_argument("--output_path", type=str, default="eval_results.json", help="Path to save evaluation results")
     args = parser.parse_args()
 
     # --- Dataset and Dataloader Configuration ---
@@ -26,8 +29,8 @@ def main():
         exit(f"Không tìm thấy file transcript: {AISHELL_TRANSCRIPT_PATH}")
     if not os.path.exists(AISHELL_WAV_ROOT):
         exit(f"Không tìm thấy thư mục wav gốc: {AISHELL_WAV_ROOT}")
-    if not os.path.isdir(os.path.join(AISHELL_WAV_ROOT, 'test')):
-        exit(f"Không tìm thấy thư mục con 'test' trong {AISHELL_WAV_ROOT}")
+    if not os.path.isdir(os.path.join(AISHELL_WAV_ROOT, args.test_or_val)):
+        exit(f"Không tìm thấy thư mục con '{args.test_or_val}' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
     TOKENIZER_NAME = "bert-base-chinese"
@@ -57,18 +60,18 @@ def main():
         reshape_features=RESHAPE_VGG_OUTPUT
     )
 
-    # Create Test Dataset and Dataloader
-    test_dataset = AISHELL1Dataset(
-        AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split='test'
+    # Create Dataset and Dataloader for the specified split
+    eval_dataset = AISHELL1Dataset(
+        AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split=args.test_or_val
     )
-    test_dataloader = DataLoader(
-        test_dataset,
+    eval_dataloader = DataLoader(
+        eval_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
         collate_fn=pad_collate_instance,
         num_workers=NUM_WORKERS
     )
-    print(f'Test Dataloader Length: {len(test_dataloader)}')
+    print(f'{args.test_or_val.capitalize()} Dataloader Length: {len(eval_dataloader)}')
 
     # --- Evaluation Logic ---
     cer = load("cer")
@@ -87,10 +90,20 @@ def main():
     print(f"Checkpoint loaded from {args.checkpoint_path}")
 
     # Perform Inference
-    cer_score, predictions, references = inference(model, tokenizer, test_dataloader, cer)
+    cer_score, predictions, references = inference(model, tokenizer, eval_dataloader, cer)
+
+    # Save Results to JSON
+    results = {
+        "cer_score": cer_score,
+        "predictions": predictions,
+        "references": references,
+    }
+    with open(args.output_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=4)
 
     # Output Results
     print(f"Average CER Score: {cer_score:.4f}")
+    print(f"Results saved to {args.output_path}")
     print("Sample Predictions:")
     for pred, ref in zip(predictions[:5], references[:5]):
         print(f"Prediction: {pred}")
