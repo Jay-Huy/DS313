@@ -140,7 +140,12 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
     total_loss = 0
     total_cer = 0
     num_batches = len(data_loader)
-    decoder_start_token_id = model.decoder.config.decoder_start_token_id
+    
+    if isinstance(model, torch.nn.DataParallel):
+        decoder_start_token_id = model.module.decoder.config.decoder_start_token_id
+    else:
+        decoder_start_token_id = model.decoder.config.decoder_start_token_id
+        
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
         if i == 50: break # For testing purposes, remove this line in production
