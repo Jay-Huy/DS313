@@ -101,7 +101,6 @@ class AISHELL1Dataset(Dataset):
         if not os.path.isdir(split_folder_path):
             print(f"Không tìm thấy thư mục con '{self.split}' trong {self.wav_root_dir}")
             return
-        # Use tqdm to track progress
         for root, _, files in tqdm(os.walk(split_folder_path)):
             for file in files:
                 if file.endswith('.wav'):
@@ -114,6 +113,7 @@ class AISHELL1Dataset(Dataset):
                             'transcript': self.transcripts[utterance_id]
                         })
 
+
     def __len__(self):
         return len(self.data)
 
@@ -123,17 +123,29 @@ class AISHELL1Dataset(Dataset):
 
 
 class PadCollate:
-    def __init__(self, pad_idx, vgg_model, tokenizer, reshape_features=True):
+    def __init__(self, pad_idx, vgg_model, tokenizer, reshape_features=True, apply_spec_augment=True): # Thêm apply_spec_augment
         self.pad_idx = pad_idx
         self.vgg_model = vgg_model
         self.vgg_model.eval()
         self.tokenizer = tokenizer
         self.reshape_features = reshape_features
-        
+
         self.SAMPLE_RATE = 16000
-        self.N_MELS = 80  # Số lượng FBank mel bins
-        self.FRAME_LENGTH = 25  # ms
-        self.FRAME_SHIFT = 10  # ms
+        self.N_MELS = 80
+        self.FRAME_LENGTH = 25
+        self.FRAME_SHIFT = 10
+
+        self.apply_spec_augment = apply_spec_augment
+        if self.apply_spec_augment:
+            # --- Khởi tạo SpecAugment ---
+            freq_mask_param = int(0.5 * self.N_MELS)
+            T_MAX_EXPECTED = 2000
+            time_mask_param = int(0.2 * T_MAX_EXPECTED)
+            self.spec_augment = nn.Sequential(
+                T.FrequencyMasking(freq_mask_param=freq_mask_param),
+                T.TimeMasking(time_mask_param=time_mask_param)
+            )
+            # --- Kết thúc SpecAugment ---
 
     def __call__(self, batch):
         wav_paths, transcripts, ids = zip(*batch)
@@ -142,36 +154,75 @@ class PadCollate:
         fbank_features = []
         feature_lengths = []
         for wav_path in wav_paths:
-            waveform, sr = torchaudio.load(wav_path)
-            waveform = (waveform - waveform.mean()) / (waveform.std() + 1e-8)
-            fbank = kaldi.fbank(waveform, sample_frequency=self.SAMPLE_RATE, num_mel_bins=self.N_MELS, frame_length=self.FRAME_LENGTH, frame_shift=self.FRAME_SHIFT, use_energy=False)
-            fbank = (fbank - fbank.mean(dim=0, keepdim=True)) / (fbank.std(dim=0, keepdim=True) + 1e-8)
-            fbank_features.append(fbank)
-            feature_lengths.append(fbank.shape[0])
+            # --- Bỏ qua file lỗi hoặc quá ngắn ---
+            try:
+                waveform, sr = torchaudio.load(wav_path)
+                if sr != self.SAMPLE_RATE:
+                     resampler = T.Resample(sr, self.SAMPLE_RATE)
+                     waveform = resampler(waveform)
+                if waveform.shape[0] > 1:
+                     waveform = torch.mean(waveform, dim=0, keepdim=True)
+                if waveform.shape[1] < self.FRAME_LENGTH * self.SAMPLE_RATE / 1000:
+                    continue
+
+                waveform = (waveform - waveform.mean()) / (waveform.std() + 1e-8)
+                fbank = kaldi.fbank(waveform, sample_frequency=self.SAMPLE_RATE, num_mel_bins=self.N_MELS, frame_length=self.FRAME_LENGTH, frame_shift=self.FRAME_SHIFT, use_energy=False)
+                if fbank.shape[0] == 0:
+                    continue
+
+                fbank = (fbank - fbank.mean(dim=0, keepdim=True)) / (fbank.std(dim=0, keepdim=True) + 1e-8)
+                fbank_features.append(fbank)
+                feature_lengths.append(fbank.shape[0])
+
+            except Exception as e:
+                return None # Trả về None nếu có lỗi khi tải/xử lý audio
+
+        if len(fbank_features) != len(batch):
+             print(f"Warning: Batch size reduced from {len(batch)} to {len(fbank_features)} due to errors/skips.")
+             if not fbank_features: return None
+             pass
+
 
         # Pad FBank features
         feature_lengths = torch.tensor(feature_lengths, dtype=torch.long)
         padded_fbanks = pad_sequence(fbank_features, batch_first=True, padding_value=0.0)
-        vgg_input = padded_fbanks.unsqueeze(1).float()
+
+        # --- Áp dụng SpecAugment ---
+        if self.apply_spec_augment:
+            padded_fbanks_t = padded_fbanks.transpose(1, 2) # (B, F, T)
+            augmented_fbanks_t = self.spec_augment(padded_fbanks_t)
+            augmented_fbanks = augmented_fbanks_t.transpose(1, 2) # (B, T, F)
+        else:
+            augmented_fbanks = padded_fbanks # Không áp dụng augment
+        # --- Kết thúc SpecAugment ---
+
+        vgg_input = augmented_fbanks.unsqueeze(1).float()
 
         # Downsample features using VGG
         with torch.no_grad():
-            downsampled_features = self.vgg_model(vgg_input)
+            vgg_input_device = vgg_input.to(next(self.vgg_model.parameters()).device)
+            downsampled_features = self.vgg_model(vgg_input_device)
+            downsampled_features = downsampled_features.cpu()
+
 
         if self.reshape_features:
             B, C_vgg, T_prime_padded, F_vgg = downsampled_features.shape
             downsampled_features = downsampled_features.permute(0, 2, 1, 3).reshape(B, T_prime_padded, C_vgg * F_vgg)
 
         # Tokenize transcripts
-        tokenized = self.tokenizer(list(transcripts), padding=True, truncation=True, return_tensors="pt")
+        transcripts_list = list(transcripts)
+        tokenized = self.tokenizer(transcripts_list, padding=True, truncation=True, return_tensors="pt", max_length = 256)
         transcript_ids = tokenized['input_ids']
         transcript_attention_mask = tokenized['attention_mask']
+        output_feature_lengths = torch.div(feature_lengths, 4, rounding_mode='floor')
+
 
         # Return batch dictionary (on CPU)
         return {
-            'downsampled_features': downsampled_features,       # Tensor (B, T', C*F) or (B, C, T', F)
-            'original_transcript': list(transcripts),          # List[str]
-            'transcript_ids': transcript_ids,                  # Tensor (B, L_max)
-            'transcript_attention_mask': transcript_attention_mask,  # Tensor (B, L_max)
-            'id': list(ids)                                    # List[str]
+            'downsampled_features': downsampled_features.cpu(),  # Tensor (B, T', C*F) or (B, C, T', F)
+            'feature_lengths': output_feature_lengths.cpu(), # Tensor (B,) - độ dài SAU VGG
+            'original_transcript': transcripts_list,             # List[str]
+            'transcript_ids': transcript_ids.cpu(),              # Tensor (B, L_max)
+            'transcript_attention_mask': transcript_attention_mask.cpu(),# Tensor (B, L_max)
+            'id': list(ids)                                      # List[str]
         }

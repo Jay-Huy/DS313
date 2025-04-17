@@ -3,7 +3,7 @@ import torch
 from torch.optim import AdamW, Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, T5Tokenizer
 from asr_model import ASRModel
 from evaluate import load
 from utils import train
@@ -18,6 +18,7 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Train ASR Model")
     parser.add_argument("--structure", type=str, default='A', choices=['A', 'B', 'C'], help="Model structure")
+    parser.add_argument("--layer_selection_mode", type=str, required=True, choices=['last6', 'first3_last3'], help="Model structure")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training")
     parser.add_argument("--transcript_path", type=str, required=True, help="Transcript path")
     parser.add_argument("--wav_path", type=str, required=True, help="Wav path")
@@ -40,16 +41,17 @@ def main():
         exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
-    TOKENIZER_NAME = "bert-base-chinese"
+    TOKENIZER_NAME = "Langboat/mengzi-t5-base"
     BATCH_SIZE = args.batch_size
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
+    APPLY_SPEC_AUGMENT = True
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load Tokenizer
     try:
-        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
+        tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
         PAD_IDX = tokenizer.pad_token_id
         if PAD_IDX is None:
             exit("Vui lòng cấu hình pad token cho tokenizer.")
@@ -64,7 +66,8 @@ def main():
         pad_idx=PAD_IDX,
         vgg_model=vgg_model,
         tokenizer=tokenizer,
-        reshape_features=RESHAPE_VGG_OUTPUT
+        reshape_features=RESHAPE_VGG_OUTPUT,
+        apply_spec_augment=APPLY_SPEC_AUGMENT
     )
 
     torch.manual_seed(42)
@@ -152,7 +155,7 @@ def main():
         return checkpoint.get('trained_epoch', 0)
 
     # Initialize Model
-    model = ASRModel(model_dim=768, mode=args.structure).to(device)
+    model = ASRModel(model_dim=768, mode=args.structure, layer_selection_mode=args.layer_selection_mode).to(device)
     if torch.cuda.device_count() > 1: 
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = torch.nn.DataParallel(model)
@@ -191,7 +194,7 @@ def main():
     )
 
     # Save the Model
-    save_path = f"structure_{args.structure}_epochs_{args.epochs + start_epoch}_subset_{args.subset}.pth"
+    save_path = f"structure_{args.structure}_{args.layer_selection_mode}_epochs_{args.epochs + start_epoch}_subset_{args.subset}.pth"
     if args.subset == 1:
         trained_epoch = start_epoch
     else:

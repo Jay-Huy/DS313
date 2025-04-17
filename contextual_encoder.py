@@ -46,10 +46,26 @@ class Contextual_Encoder(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
         self.params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        """
+        Apply Xavier initialization to all linear layers and attention weights.
+        """
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, MultiHeadedDotAttention):
+                for param in module.parameters():
+                    if param.dim() > 1:  # Only initialize weight matrices
+                        nn.init.xavier_uniform_(param)
         
     def rope_positional_encoding(self, seq_length):
         """
-        Implements 2D Relative and Absolute Positional Encoding (2DRopE).
+        Implements 2D Relative and Absolute Positional Encoding (2DRoPE).
         """
         position = torch.arange(0, seq_length, dtype=torch.float32, device=self.device).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, self.embed_size, 2, dtype=torch.float32, device=self.device) * 
@@ -60,12 +76,14 @@ class Contextual_Encoder(nn.Module):
         pos_encoding[:, 0::2] = torch.sin(position * div_term)
         pos_encoding[:, 1::2] = torch.cos(position * div_term)
         
-        # Relative positional encoding (example: pairwise distances)
-        relative_positions = torch.arange(-seq_length + 1, seq_length, device=self.device)
+        # Relative positional encoding
+        relative_positions = torch.arange(-seq_length + 1, seq_length, device=self.device).unsqueeze(0)
         relative_encoding = torch.zeros(seq_length, seq_length, self.embed_size, device=self.device)
+        
+        # Efficient computation of relative encoding
         for i in range(seq_length):
-            for j in range(seq_length):
-                relative_encoding[i, j] = pos_encoding[abs(relative_positions[i - j])]
+            relative_encoding[i, :, 0::2] = torch.sin((position - i) * div_term)
+            relative_encoding[i, :, 1::2] = torch.cos((position - i) * div_term)
         
         return pos_encoding, relative_encoding
 

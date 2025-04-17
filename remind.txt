@@ -38,3 +38,32 @@ Nhưng mà ông load ở ngoài rồi truyền vào dataset nha, đừng load tr
 C. Trích xuất đặc trưng luôn trong hàm collate_fn : 
 Kiểu cái downsampled_features là cái mà mình đã làm xong xuôi hết luôn rồi á, nó chỉ cần truyền vào và train thôi, không cần chạy gì thêm cho nó. 
 Làm vậy thì code của mình sẽ sạch hơn á ông. Còn lại ông muốn để shape dạng (B, C, T, F) hay (B, T, C*f) cũng được
+
+---------------15/4/2025 Note----------------
+- Model bằng Adam đã FAILED -> Shifted Left Output 
+
+- Đang train model bằng AdamW - Thay Chinese Bert thành Chinese T5 (chỉ trong 2-3 epoch và xem kết quả)
+
+- Có thể sẽ phải code lại model:
+    + CNN-AcousticEncoder -> Wave2Vec or Speech2Text
+    + Contextual Encoder -> (Check lại các ASR model, hoặc sử dụng của pretrained-model)
+    + Deocder -> T5
+    + Check lại cả cách tính loss. 
+
+---------------Task 21/4/2025----------------
+- Bởi vì việc train model có thể sẽ FAILED, nên yêu cầu 2 bạn còn lại đi survey lại từ đầu. Yêu cầu cho 1 bài survey là:
+    + Phải có sẵn code (QUAN TRỌNG).
+    + Khi tìm ra phải thử xem code có chạy dc hay không, đừng chỉ gửi cái repo lên và nói đã tìm thấy rồi (QUAN TRỌNG).
+    + Phải kiểm tra thông tin dataset (có bao nhiêu ở 3 file train, test, dev; có down dc hay không).
+    + Kiểm tra thông tin model xem model có size là bao nhiêu ().
+    + Kiểm tra xem nếu chạy 1 batch thì tốn bao lâu -> Từ đó ước lượng thời gian train.
+
+- Hỏi team xem t3 tsau có đi học được không, bởi vì nghe báo cáo trực tiếp thì oke hơn.
+
+Việc của Huy: Check lại Model và refer từ SpeechText
+Việc của Kiệt: Chạy SpeechText
+Việc của Tường và Quân: Ở trên
+
+---------------Not 16/4/2025----------------
+- Check lại cơ chế tokenizer của T5
+- Train 2 Epoch.

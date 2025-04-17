@@ -69,6 +69,40 @@ class FFN(nn.Module):
         ffn_out = self.layer(x)
         return self.dropout(self.norm(ffn_out + x))
     
+def _shift_right(input_ids, decoder_start_token_id, pad_token_id):
+    """
+    Shifts the input_ids to the right and prepends the decoder_start_token_id.
+
+    Args:
+        input_ids (torch.Tensor): Tensor of shape (batch_size, seq_length) containing input token IDs.
+        decoder_start_token_id (int): The token ID to prepend at the start of each sequence.
+        pad_token_id (int): The token ID used for padding.
+
+    Returns:
+        torch.Tensor: Tensor of shape (batch_size, seq_length) with shifted input IDs.
+    """
+    if decoder_start_token_id is None:
+        raise ValueError(
+            "decoder_start_token_id must be defined. In T5, it is usually set to the pad_token_id."
+        )
+
+    if pad_token_id is None:
+        raise ValueError("pad_token_id must be defined.")
+
+    # Create a tensor for the shifted input IDs
+    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+
+    # Shift inputs to the right
+    shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
+
+    # Replace the first token with the decoder_start_token_id
+    shifted_input_ids[..., 0] = decoder_start_token_id
+
+    # Replace possible -100 values in labels with `pad_token_id`
+    shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
+
+    return shifted_input_ids
+    
 def loss_fn(outputs, labels, cer_score, criterion, gamma=1.0, ignore_index=0):
     """
     Compute the weighted loss for the Decoder using alpha weights based on CER.
@@ -106,29 +140,37 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
     total_loss = 0
     total_cer = 0
     num_batches = len(data_loader)
-
+    decoder_start_token_id = model.decoder.config.decoder_start_token_id
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
-        # if i == 100: break
+        if i == 50: break # For testing purposes, remove this line in production
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-        input_ids = batch['transcript_ids']  # Batch_size, seq_length
+        # Example: 而 对 楼市 成交 抑制 作用 最 大 的 限 购</s>
+        ground_truth_ids = batch['transcript_ids']  # Batch_size, seq_length # Ground truth labels because it is left-shifted #
         downsampled_features = batch['downsampled_features']  # Batch_size, seq_length, feature_dim
         attention_mask = batch['transcript_attention_mask']  # Batch_size, seq_length
 
-        # Shifted left input_ids for loss calculation
-        shifted_left_outputs = torch.cat([input_ids[:, 1:], torch.full((input_ids.size(0), 1), tokenizer.pad_token_id, dtype=torch.long, device=device)], dim=1)
+        # Shifted Right input_ids for loss calculation
+        # Training data because it have to be right-shifted
+        # Example: <pad>而 对 楼市 成交 抑制 作用 最 大 的 限 购
+        training_input_ids = _shift_right(ground_truth_ids, decoder_start_token_id, tokenizer.pad_token_id)  # Batch_size, seq_length 
+        if i == 0: # First batch
+            ground_truth_text = tokenizer.batch_decode(ground_truth_ids)
+            training_input_text = tokenizer.batch_decode(training_input_ids)
+            print(f"Ground truth text: {ground_truth_text}")
+            print(f"Training input text: {training_input_text}\n")
 
         # Forward pass
-        outputs = model(input_ids, attention_mask, downsampled_features)  # Batch_size, seq_length, vocab_size
+        outputs = model(training_input_ids, attention_mask, downsampled_features)  # Batch_size, seq_length, vocab_size
 
         # Compute CER and loss
         ids_prediction = outputs.argmax(dim=-1)  # Batch_size, seq_length
         predictions = tokenizer.batch_decode(ids_prediction, skip_special_tokens=True)  # Batch_size
-        references = tokenizer.batch_decode(shifted_left_outputs, skip_special_tokens=True)  # Batch_size
+        references = tokenizer.batch_decode(ground_truth_ids, skip_special_tokens=True)  # Batch_size
         cer_score = cer.compute(predictions=predictions, references=references)
 
-        loss = loss_fn(outputs, shifted_left_outputs, cer_score, criterion)
+        loss = loss_fn(outputs, ground_truth_ids, cer_score, criterion, ignore_index = tokenizer.pad_token_id)
 
         if train:
             optimizer.zero_grad()
@@ -137,6 +179,13 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
         total_loss += loss.item()
         total_cer += cer_score
+
+        print(f"Batch {i + 1}/{num_batches}")
+        for ref, pred in zip(references[:5], predictions[:5]):  # Print first 5 examples in the batch
+            print(f"Reference: {ref}")
+            print(f"Prediction: {pred}")
+            print("-" * 50)
+        print('\n')
 
     mean_loss = total_loss / num_batches
     mean_cer = total_cer / num_batches
