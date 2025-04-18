@@ -29,6 +29,76 @@ def main():
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
     args = parser.parse_args()
 
+    def get_scheduler(optimizer, num_warmup_steps, start_step=0):
+        """
+        Create a learning rate scheduler with a warm-up strategy.
+
+        Args:
+            optimizer (torch.optim.Optimizer): The optimizer to apply the scheduler to.
+            num_warmup_steps (int): Number of warm-up steps.
+            start_step (int): The step to resume from in continuous training.
+
+        Returns:
+            LambdaLR: A learning rate scheduler.
+        """
+        def lr_lambda(current_step):
+            total_step = current_step + start_step
+            if total_step < num_warmup_steps:
+                return float(total_step) / float(max(1, num_warmup_steps))
+            return 1.0
+
+        return LambdaLR(optimizer, lr_lambda)
+
+    # Load Checkpoint for Continuous Training
+    def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
+        """
+        Load a checkpoint into the model, optimizer, and scheduler.
+
+        Args:
+            checkpoint_path (str): Path to the checkpoint file.
+            model (torch.nn.Module): The model to load the checkpoint into.
+            optimizer (torch.optim.Optimizer, optional): The optimizer to load the state into.
+            scheduler (torch.optim.lr_scheduler, optional): The scheduler to load the state into.
+
+        Returns:
+            int: The epoch to resume training from.
+        """
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        if optimizer:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if scheduler:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        print(f"Checkpoint loaded from {checkpoint_path}")
+        return checkpoint.get('trained_epoch', 0)
+
+    # Initialize Model
+    model = ASRModel(model_dim=768, mode=args.structure, layer_selection_mode=args.layer_selection_mode).to(device)
+    if torch.cuda.device_count() > 1: 
+        print(f"Using {torch.cuda.device_count()} GPUs")
+        model = torch.nn.DataParallel(model)
+        
+    # Initialize Criterion and Optimizer
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
+    optimizer = AdamW(model.parameters())
+
+    # Load Scheduler and Checkpoint
+    start_epoch = 0
+    # Load Schheduler
+    num_warmup_steps = 12000
+    steps_per_epoch = len(train_dataloader)
+
+    start_step = start_epoch * steps_per_epoch
+    scheduler = get_scheduler(optimizer, num_warmup_steps, start_step=start_step)
+
+    # Load checkpoint if provided
+    if args.checkpoint_path:
+        if os.path.exists(args.checkpoint_path):
+            start_epoch = load_checkpoint(args.checkpoint_path, model, optimizer, scheduler)
+            print(f'The model has been trained on {start_epoch} epochs')
+        else:
+            print(f"Checkpoint path {args.checkpoint_path} does not exist. Starting training from scratch.")
+            
     # --- Dataset and Dataloader Configuration ---
     AISHELL_TRANSCRIPT_PATH = args.transcript_path
     AISHELL_WAV_ROOT = args.wav_path
@@ -110,76 +180,6 @@ def main():
 
     # --- Training Logic ---
     cer = load("cer")
-
-    def get_scheduler(optimizer, num_warmup_steps, start_step=0):
-        """
-        Create a learning rate scheduler with a warm-up strategy.
-
-        Args:
-            optimizer (torch.optim.Optimizer): The optimizer to apply the scheduler to.
-            num_warmup_steps (int): Number of warm-up steps.
-            start_step (int): The step to resume from in continuous training.
-
-        Returns:
-            LambdaLR: A learning rate scheduler.
-        """
-        def lr_lambda(current_step):
-            total_step = current_step + start_step
-            if total_step < num_warmup_steps:
-                return float(total_step) / float(max(1, num_warmup_steps))
-            return 1.0
-
-        return LambdaLR(optimizer, lr_lambda)
-
-    # Load Checkpoint for Continuous Training
-    def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
-        """
-        Load a checkpoint into the model, optimizer, and scheduler.
-
-        Args:
-            checkpoint_path (str): Path to the checkpoint file.
-            model (torch.nn.Module): The model to load the checkpoint into.
-            optimizer (torch.optim.Optimizer, optional): The optimizer to load the state into.
-            scheduler (torch.optim.lr_scheduler, optional): The scheduler to load the state into.
-
-        Returns:
-            int: The epoch to resume training from.
-        """
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        if optimizer:
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        if scheduler:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        print(f"Checkpoint loaded from {checkpoint_path}")
-        return checkpoint.get('trained_epoch', 0)
-
-    # Initialize Model
-    model = ASRModel(model_dim=768, mode=args.structure, layer_selection_mode=args.layer_selection_mode).to(device)
-    if torch.cuda.device_count() > 1: 
-        print(f"Using {torch.cuda.device_count()} GPUs")
-        model = torch.nn.DataParallel(model)
-        
-    # Initialize Criterion and Optimizer
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
-    optimizer = AdamW(model.parameters())
-
-    # Load Scheduler and Checkpoint
-    start_epoch = 0
-    # Load Schheduler
-    num_warmup_steps = 12000
-    steps_per_epoch = len(train_dataloader)
-
-    start_step = start_epoch * steps_per_epoch
-    scheduler = get_scheduler(optimizer, num_warmup_steps, start_step=start_step)
-
-    # Load checkpoint if provided
-    if args.checkpoint_path:
-        if os.path.exists(args.checkpoint_path):
-            start_epoch = load_checkpoint(args.checkpoint_path, model, optimizer, scheduler)
-            print(f'The model has been trained on {start_epoch} epochs')
-        else:
-            print(f"Checkpoint path {args.checkpoint_path} does not exist. Starting training from scratch.")
     
     # Train the Model
     train_metrics_list = train(
