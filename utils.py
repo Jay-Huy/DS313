@@ -102,6 +102,25 @@ def _shift_right(input_ids, decoder_start_token_id, pad_token_id):
     shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
     return shifted_input_ids
+
+def ignore_padding(outputs, labels, padding_values = 1):
+
+  mask = labels != padding_values
+
+  new_outputs, new_labels = [], []
+
+  for i, each in enumerate(mask):
+    ignore_outputs = outputs[i][each]
+    ignore_labels = labels[i][each]
+
+    new_outputs.append(ignore_outputs), new_labels.append(ignore_labels)
+
+  return new_outputs, new_labels
+
+def convert_ids_to_string(ids, tokenizer):
+
+  new_ids = ids.copy()
+  return [tokenizer.decode(id) for id in new_ids]
     
 def loss_fn(outputs, labels, cer_score, criterion, gamma=1.0, ignore_index=0):
     """
@@ -139,16 +158,17 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
     total_loss = 0
     total_cer = 0
+    total_ignore_padding_cer = 0
     num_batches = len(data_loader)
     
     if isinstance(model, torch.nn.DataParallel):
         decoder_start_token_id = model.module.decoder.config.decoder_start_token_id
     else:
         decoder_start_token_id = model.decoder.config.decoder_start_token_id
-        
+
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
-        # if i == 50: break # For testing purposes, remove this line in production
+        if i == 50: break # For testing purposes, remove this line in production
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
         # Example: 而 对 楼市 成交 抑制 作用 最 大 的 限 购</s>
@@ -175,7 +195,17 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         references = tokenizer.batch_decode(ground_truth_ids, skip_special_tokens=True)  # Batch_size
         cer_score = cer.compute(predictions=predictions, references=references)
 
-        loss = loss_fn(outputs, ground_truth_ids, cer_score, criterion, ignore_index = tokenizer.pad_token_id)
+        # Ignore padding tokens in the predictions and labels
+        outputs_, labels_ = ignore_padding(ids_prediction, ground_truth_ids, padding_values=tokenizer.pad_token_id)
+        predictions_ = convert_ids_to_string(outputs_, tokenizer)
+        references_ = convert_ids_to_string(labels_, tokenizer)
+        ignore_padding_cer_score = cer.compute(predictions=predictions_, references=references_)
+
+        # Use the smaller CER for loss calculation
+        print(f"CER: {cer_score}, Ignore Padding CER: {ignore_padding_cer_score}")
+        effective_cer_score = min(cer_score, ignore_padding_cer_score)
+        print(f"Effective CER Score: {effective_cer_score}\n")
+        loss = loss_fn(outputs, ground_truth_ids, effective_cer_score, criterion, ignore_index = tokenizer.pad_token_id)
 
         if train:
             optimizer.zero_grad()
@@ -184,6 +214,7 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
         total_loss += loss.item()
         total_cer += cer_score
+        total_ignore_padding_cer += ignore_padding_cer_score
 
         print(f"Batch {i + 1}/{num_batches}")
         for ref, pred in zip(references[:5], predictions[:5]):  # Print first 5 examples in the batch
@@ -194,10 +225,12 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
     mean_loss = total_loss / num_batches
     mean_cer = total_cer / num_batches
+    mean_ignore_padding_cer = total_ignore_padding_cer / num_batches
 
     return {
         'mean_loss': mean_loss,
         'mean_cer': mean_cer,
+        'mean_ignore_padding_cer': mean_ignore_padding_cer,
     }
 
 def train(model, tokenizer, train_dataloader, optimizer, criterion, scheduler, epochs, cer):
@@ -220,7 +253,7 @@ def train(model, tokenizer, train_dataloader, optimizer, criterion, scheduler, e
 
         scheduler.step()
 
-        print(f"Train - Loss: {train_metrics['mean_loss']:.4f}, CER: {train_metrics['mean_cer']:.4f}")
+        print(f"Train - Loss: {train_metrics['mean_loss']:.4f}, CER: {train_metrics['mean_cer']:.4f}, Ignore Padding CER: {train_metrics['mean_ignore_padding_cer']:.4f}")
 
         # Save metrics to lists
         train_metrics_list.append(train_metrics)
