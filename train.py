@@ -28,8 +28,89 @@ def main():
     parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Path to save the model checkpoint")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
     args = parser.parse_args()
+
+    # --- Dataset and Dataloader Configuration ---
+    AISHELL_TRANSCRIPT_PATH = args.transcript_path
+    AISHELL_WAV_ROOT = args.wav_path
+    if not os.path.exists(AISHELL_TRANSCRIPT_PATH):
+        exit(f"Không tìm thấy file transcript: {AISHELL_TRANSCRIPT_PATH}")
+    if not os.path.exists(AISHELL_WAV_ROOT):
+        exit(f"Không tìm thấy thư mục wav gốc: {AISHELL_WAV_ROOT}")
+    available_splits = [d for d in ['train', 'dev', 'test'] if os.path.isdir(os.path.join(AISHELL_WAV_ROOT, d))]
+    if not available_splits:
+        exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
+
+    # Configuration
+    TOKENIZER_NAME = "Langboat/mengzi-t5-base"
+    BATCH_SIZE = args.batch_size
+    NUM_WORKERS = args.num_workers
+    RESHAPE_VGG_OUTPUT = True
+    APPLY_SPEC_AUGMENT = True
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
+    # Load Tokenizer
+    try:
+        tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
+        PAD_IDX = tokenizer.pad_token_id
+        if PAD_IDX is None:
+            exit("Vui lòng cấu hình pad token cho tokenizer.")
+    except Exception as e:
+        exit(f"Không thể tải tokenizer '{TOKENIZER_NAME}'. Lỗi: {e}")
+
+    # Initialize VGG Feature Extractor
+    vgg_model = PretrainedVGGExtractor(freeze_features=True)
+
+    # Initialize PadCollate
+    pad_collate_instance = PadCollate(
+        pad_idx=PAD_IDX,
+        vgg_model=vgg_model,
+        tokenizer=tokenizer,
+        reshape_features=RESHAPE_VGG_OUTPUT,
+        apply_spec_augment=APPLY_SPEC_AUGMENT
+    )
+
+    torch.manual_seed(42)
+    # Create Datasets and Dataloaders
+    datasets = {}
+    dataloaders = {}
+    for split in available_splits:
+        if split == 'train':
+            datasets[split] = AISHELL1Dataset(
+                AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split=split
+            )
+            shuffle_data = (split == 'train')
+            dataloaders[split] = DataLoader(
+                datasets[split],
+                batch_size=BATCH_SIZE,
+                shuffle=shuffle_data,
+                collate_fn=pad_collate_instance,
+                num_workers=NUM_WORKERS
+            )
+
+    if args.subset == 0:
+        train_dataloader = dataloaders['train']
+        print(f'Subset mode: {args.subset} - Full Train Dataloader Length: {len(train_dataloader)}')
+    else:
+        subset_size = len(train_dataloader.dataset) // 2  # Divide the dataloader into two subsets
+        if args.subset == 1:
+            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
+        elif args.subset == 2:
+            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
+
+        train_dataloader = DataLoader(
+            train_dataloader,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            collate_fn=pad_collate_instance,
+            num_workers=NUM_WORKERS
+        )
+
+        print(f'Subset mode: {args.subset} - Half Train Dataloader Length: {len(train_dataloader)}')
+
+    # --- Training Logic ---
+    cer = load("cer")
+
     def get_scheduler(optimizer, num_warmup_steps, start_step=0):
         """
         Create a learning rate scheduler with a warm-up strategy.
@@ -99,85 +180,6 @@ def main():
             print(f'The model has been trained on {start_epoch} epochs')
         else:
             print(f"Checkpoint path {args.checkpoint_path} does not exist. Starting training from scratch.")
-            
-    # --- Dataset and Dataloader Configuration ---
-    AISHELL_TRANSCRIPT_PATH = args.transcript_path
-    AISHELL_WAV_ROOT = args.wav_path
-    if not os.path.exists(AISHELL_TRANSCRIPT_PATH):
-        exit(f"Không tìm thấy file transcript: {AISHELL_TRANSCRIPT_PATH}")
-    if not os.path.exists(AISHELL_WAV_ROOT):
-        exit(f"Không tìm thấy thư mục wav gốc: {AISHELL_WAV_ROOT}")
-    available_splits = [d for d in ['train', 'dev', 'test'] if os.path.isdir(os.path.join(AISHELL_WAV_ROOT, d))]
-    if not available_splits:
-        exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
-
-    # Configuration
-    TOKENIZER_NAME = "Langboat/mengzi-t5-base"
-    BATCH_SIZE = args.batch_size
-    NUM_WORKERS = args.num_workers
-    RESHAPE_VGG_OUTPUT = True
-    APPLY_SPEC_AUGMENT = True
-    # Load Tokenizer
-    try:
-        tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
-        PAD_IDX = tokenizer.pad_token_id
-        if PAD_IDX is None:
-            exit("Vui lòng cấu hình pad token cho tokenizer.")
-    except Exception as e:
-        exit(f"Không thể tải tokenizer '{TOKENIZER_NAME}'. Lỗi: {e}")
-
-    # Initialize VGG Feature Extractor
-    vgg_model = PretrainedVGGExtractor(freeze_features=True)
-
-    # Initialize PadCollate
-    pad_collate_instance = PadCollate(
-        pad_idx=PAD_IDX,
-        vgg_model=vgg_model,
-        tokenizer=tokenizer,
-        reshape_features=RESHAPE_VGG_OUTPUT,
-        apply_spec_augment=APPLY_SPEC_AUGMENT
-    )
-
-    torch.manual_seed(42)
-    # Create Datasets and Dataloaders
-    datasets = {}
-    dataloaders = {}
-    for split in available_splits:
-        if split == 'train':
-            datasets[split] = AISHELL1Dataset(
-                AISHELL_TRANSCRIPT_PATH, AISHELL_WAV_ROOT, split=split
-            )
-            shuffle_data = (split == 'train')
-            dataloaders[split] = DataLoader(
-                datasets[split],
-                batch_size=BATCH_SIZE,
-                shuffle=shuffle_data,
-                collate_fn=pad_collate_instance,
-                num_workers=NUM_WORKERS
-            )
-
-    if args.subset == 0:
-        train_dataloader = dataloaders['train']
-        print(f'Subset mode: {args.subset} - Full Train Dataloader Length: {len(train_dataloader)}')
-    else:
-        subset_size = len(train_dataloader.dataset) // 2  # Divide the dataloader into two subsets
-        if args.subset == 1:
-            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(0, subset_size))
-        elif args.subset == 2:
-            train_dataloader = torch.utils.data.Subset(train_dataloader.dataset, range(subset_size, len(train_dataloader.dataset)))
-
-        train_dataloader = DataLoader(
-            train_dataloader,
-            batch_size=BATCH_SIZE,
-            shuffle=True,
-            collate_fn=pad_collate_instance,
-            num_workers=NUM_WORKERS
-        )
-
-        print(f'Subset mode: {args.subset} - Half Train Dataloader Length: {len(train_dataloader)}')
-
-    # --- Training Logic ---
-    cer = load("cer")
     
     # Train the Model
     train_metrics_list = train(
