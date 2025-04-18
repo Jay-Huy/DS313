@@ -28,7 +28,8 @@ def main():
     parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Path to save the model checkpoint")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
     args = parser.parse_args()
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     def get_scheduler(optimizer, num_warmup_steps, start_step=0):
         """
         Create a learning rate scheduler with a warm-up strategy.
@@ -116,9 +117,6 @@ def main():
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
     APPLY_SPEC_AUGMENT = True
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     # Load Tokenizer
     try:
         tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
