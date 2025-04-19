@@ -26,8 +26,10 @@ class ASRModel(nn.Module):
             self.contextual_encoder = None
         
         # Decoder
-        # Load the pre-trained embedding layer from the Chinese BERT model
-        t5_module = T5ForConditionalGeneration.from_pretrained("Langboat/mengzi-t5-base").to(device)
+        # Load the pre-trained embedding layer from the Chinese BERT model uer/t5-base-chinese-cluecorpussmall
+        # t5_module = T5ForConditionalGeneration.from_pretrained("Langboat/mengzi-t5-base").to(device)
+        t5_module = T5ForConditionalGeneration.from_pretrained("uer/t5-base-chinese-cluecorpussmall").to(device)
+        
         decoder_module = t5_module.decoder
         self.vocab_size = decoder_module.config.vocab_size
         self.config = t5_module.config
