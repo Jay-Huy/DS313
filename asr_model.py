@@ -88,6 +88,11 @@ class ASRModel(nn.Module):
             first_encoder_hidden_states = ce_outputs
             second_encoder_hidden_states = ae_outputs
 
+        else:
+            first_encoder_hidden_states = ae_outputs
+            second_encoder_hidden_states = None
+
+        # Decoder
         output = self.decoder(input_ids = input_ids, 
                             first_encoder_hidden_states = first_encoder_hidden_states,
                             second_encoder_hidden_states = second_encoder_hidden_states,

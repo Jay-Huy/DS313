@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from utils import MultiHeadedDotAttention
+import math
 
 class Decoder(nn.Module):
     def __init__(self, mode = 'A', layer_selection_mode = 'last6', decoder_module = None, config = None, _update_causal_mask=None, invert_attention_mask=None, get_head_mask=None):
@@ -44,10 +46,40 @@ class Decoder(nn.Module):
         self.config = config
         self.config.is_decoder = True
         self.gradient_checkpointing = False
+        self.embed_size = self.config.d_model
 
         self._update_causal_mask = decoder_module._update_causal_mask
         self.invert_attention_mask = decoder_module.invert_attention_mask
         self.get_head_mask = decoder_module.get_head_mask
+
+        if self.mode == 'C':
+            self.multihead_attention_layers = nn.ModuleList([
+                MultiHeadedDotAttention(num_heads=6, features_size=self.config.d_model) for _ in range(len(self.block))
+            ])
+
+    def rope_positional_encoding(self, seq_length): # This function will be used for C structure
+        """
+        Implements 2D Relative and Absolute Positional Encoding (2DRoPE).
+        """
+        position = torch.arange(0, seq_length, dtype=torch.float32, device=self.device).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.embed_size, 2, dtype=torch.float32, device=self.device) * 
+                            -(math.log(10000.0) / self.embed_size))
+        
+        # Absolute positional encoding
+        pos_encoding = torch.zeros(seq_length, self.embed_size, device=self.device)
+        pos_encoding[:, 0::2] = torch.sin(position * div_term)
+        pos_encoding[:, 1::2] = torch.cos(position * div_term)
+        
+        # Relative positional encoding
+        relative_positions = torch.arange(-seq_length + 1, seq_length, device=self.device).unsqueeze(0)
+        relative_encoding = torch.zeros(seq_length, seq_length, self.embed_size, device=self.device)
+        
+        # Efficient computation of relative encoding
+        for i in range(seq_length):
+            relative_encoding[i, :, 0::2] = torch.sin((position - i) * div_term)
+            relative_encoding[i, :, 1::2] = torch.cos((position - i) * div_term)
+        
+        return pos_encoding, relative_encoding
 
     def forward(
         self,
@@ -134,21 +166,28 @@ class Decoder(nn.Module):
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
-        if self.is_decoder and first_encoder_hidden_states is not None and second_encoder_hidden_states is not None:
-            first_encoder_batch_size, first_encoder_sequence_length, _ = first_encoder_hidden_states.size()
-            second_encoder_batch_size, second_encoder_sequence_length, _ = second_encoder_hidden_states.size()
+        if self.is_decoder:
+            if first_encoder_hidden_states is not None:
+                first_encoder_batch_size, first_encoder_sequence_length, _ = first_encoder_hidden_states.size()
+                first_encoder_hidden_shape = (first_encoder_batch_size, first_encoder_sequence_length)
 
-            first_encoder_hidden_shape = (first_encoder_batch_size, first_encoder_sequence_length)
-            second_encoder_hidden_shape = (second_encoder_batch_size, second_encoder_sequence_length)
+                first_encoder_attention_mask = torch.ones(
+                    first_encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
+                )
+                first_encoder_extended_attention_mask = self.invert_attention_mask(first_encoder_attention_mask)
+            else:
+                first_encoder_extended_attention_mask = None
 
-            first_encoder_attention_mask = torch.ones(
-                first_encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
-            )
-            second_encoder_attention_mask = torch.ones(
-                second_encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
-            )
-            first_encoder_extended_attention_mask = self.invert_attention_mask(first_encoder_attention_mask)
-            second_encoder_extended_attention_mask = self.invert_attention_mask(second_encoder_attention_mask)
+            if second_encoder_hidden_states is not None:
+                second_encoder_batch_size, second_encoder_sequence_length, _ = second_encoder_hidden_states.size()
+                second_encoder_hidden_shape = (second_encoder_batch_size, second_encoder_sequence_length)
+
+                second_encoder_attention_mask = torch.ones(
+                    second_encoder_hidden_shape, device=inputs_embeds.device, dtype=torch.long
+                )
+                second_encoder_extended_attention_mask = self.invert_attention_mask(second_encoder_attention_mask)
+            else:
+                second_encoder_extended_attention_mask = None
         else:
             first_encoder_extended_attention_mask, second_encoder_extended_attention_mask = None, None
 
@@ -222,6 +261,7 @@ class Decoder(nn.Module):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 cache_position=cache_position,
+                layer_index=i,
             )
 
             # Update position biases
@@ -262,6 +302,7 @@ class Decoder(nn.Module):
         use_cache=False,
         output_attentions=False,
         cache_position=None,
+        layer_index=None, # Added for mode 'C'
     ):
         # Self-Attention
         self_attention_outputs = layer_module.layer[0](
@@ -314,7 +355,30 @@ class Decoder(nn.Module):
 
             # Update position bias for the second encoder
             second_encoder_decoder_position_bias = cross_attention_outputs[2]
+        else:
+            _, seq_length = first_encoder_hidden_states.size(0), first_encoder_hidden_states.size(1)
+            pos_encoding, _ = self.rope_positional_encoding(seq_length)
+            second_encoder_hidden_states = self.multihead_attention_layers[layer_index](
+                query=first_encoder_hidden_states,
+                key=pos_encoding,
+                value=pos_encoding,
+            )
+            cross_attention_outputs = layer_module.layer[1](  # Reuse the same layer
+                hidden_states,
+                key_value_states=second_encoder_hidden_states,
+                attention_mask=second_encoder_attention_mask,
+                position_bias=second_encoder_decoder_position_bias,
+                layer_head_mask=cross_attn_head_mask,
+                past_key_value=past_key_value,
+                query_length=cache_position[-1] + 1 if cache_position is not None else None,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+            )
+            hidden_states, past_key_value = cross_attention_outputs[:2]
+            attention_outputs = attention_outputs + cross_attention_outputs[2:]
 
+            # Update position bias for the second encoder
+            second_encoder_decoder_position_bias = cross_attention_outputs[2]
         # Feed Forward
         hidden_states = layer_module.layer[-1](hidden_states)
 
