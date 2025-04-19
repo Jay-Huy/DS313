@@ -225,11 +225,13 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         ignore_padding_cer_score = cer.compute(predictions=predictions_, references=references_)
 
         # Use the smaller CER for loss calculation
+        print(f"Batch {i + 1}/{num_batches}")
         print(f"CER: {cer_score}, Ignore Padding CER: {ignore_padding_cer_score}")
         effective_cer_score = min(cer_score, ignore_padding_cer_score)
-        print(f"Effective CER Score: {effective_cer_score}\n")
+        print(f"Effective CER Score: {effective_cer_score}")
         loss = loss_fn(outputs, ground_truth_ids, effective_cer_score, criterion, ignore_index = tokenizer.pad_token_id)
-
+        print(f"Loss: {loss}\n")
+        
         if train:
             optimizer.zero_grad()
             loss.backward()
@@ -239,7 +241,6 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         total_cer += cer_score
         total_ignore_padding_cer += ignore_padding_cer_score
 
-        print(f"Batch {i + 1}/{num_batches}")
         for ref, pred in zip(references[:5], predictions[:5]):  # Print first 5 examples in the batch
             print(f"Reference: {ref}")
             print(f"Prediction: {pred}")
