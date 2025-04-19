@@ -41,7 +41,9 @@ def main():
         exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
-    TOKENIZER_NAME = "Langboat/mengzi-t5-base"
+    # TOKENIZER_NAME = "Langboat/mengzi-t5-base"
+    TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
+    
     BATCH_SIZE = args.batch_size
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
