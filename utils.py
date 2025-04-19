@@ -190,7 +190,7 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
-        if i == 50: break # For testing purposes, remove this line in production
+        # if i == 50: break # For testing purposes, remove this line in production
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
         # Example: [CLS] 而 对 楼 市 成 交 抑 制 作 用 最 大 的 限 购 [SEP] [PAD] [PAD] [PAD]
