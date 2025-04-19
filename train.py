@@ -3,7 +3,7 @@ import torch
 from torch.optim import AdamW, Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer, T5Tokenizer
+from transformers import AutoTokenizer, T5Tokenizer, BertTokenizer
 from asr_model import ASRModel
 from evaluate import load
 from utils import train
