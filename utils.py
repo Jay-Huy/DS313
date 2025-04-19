@@ -103,6 +103,28 @@ def _shift_right(input_ids, decoder_start_token_id, pad_token_id):
 
     return shifted_input_ids
 
+def _shift_left(input_ids, pad_token_id):
+    """
+    Shifts the input_ids to the left and appends the pad_token_id at the end.
+
+    Args:
+        input_ids (torch.Tensor): Tensor of shape (batch_size, seq_length) containing input token IDs.
+        pad_token_id (int): The token ID used for padding.
+
+    Returns:
+        torch.Tensor: Tensor of shape (batch_size, seq_length) with left-shifted input IDs.
+    """
+    # Create a tensor for the shifted input IDs
+    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+
+    # Shift inputs to the left
+    shifted_input_ids[..., :-1] = input_ids[..., 1:].clone()
+
+    # Replace the last token with the pad_token_id
+    shifted_input_ids[..., -1] = pad_token_id
+
+    return shifted_input_ids
+
 def ignore_padding(outputs, labels, padding_values = 1):
 
   mask = labels != padding_values
@@ -168,18 +190,19 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
 
     for i, batch in tqdm(enumerate(data_loader)):
         # Move batch to device
-        # if i == 50: break # For testing purposes, remove this line in production
+        if i == 50: break # For testing purposes, remove this line in production
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-        # Example: 而 对 楼市 成交 抑制 作用 最 大 的 限 购</s>
-        ground_truth_ids = batch['transcript_ids']  # Batch_size, seq_length # Ground truth labels because it is left-shifted #
+        # Example: [CLS] 而 对 楼 市 成 交 抑 制 作 用 最 大 的 限 购 [SEP] [PAD] [PAD] [PAD]
+        training_input_ids = batch['transcript_ids']  # Batch_size, seq_length # Training Data because it is right-shifted
         downsampled_features = batch['downsampled_features']  # Batch_size, seq_length, feature_dim
         attention_mask = batch['transcript_attention_mask']  # Batch_size, seq_length
 
-        # Shifted Right input_ids for loss calculation
-        # Training data because it have to be right-shifted
-        # Example: <pad>而 对 楼市 成交 抑制 作用 最 大 的 限 购
-        training_input_ids = _shift_right(ground_truth_ids, decoder_start_token_id, tokenizer.pad_token_id)  # Batch_size, seq_length 
+        # Shifted Left input_ids for loss calculation
+        # Ground-Truth data because it have to be left-shifted
+        # Example: 而 对 楼 市 成 交 抑 制 作 用 最 大 的 限 购 [SEP] [PAD] [PAD] [PAD] [PAD]
+        ground_truth_ids = _shift_left(training_input_ids, tokenizer.pad_token_id)  # Batch_size, seq_length 
+
         if i == 0: # First batch
             ground_truth_text = tokenizer.batch_decode(ground_truth_ids)
             training_input_text = tokenizer.batch_decode(training_input_ids)

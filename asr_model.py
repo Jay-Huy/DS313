@@ -6,7 +6,7 @@ from transformers import T5ForConditionalGeneration
 import torch
 
 class ASRModel(nn.Module):
-    def __init__(self, model_dim = 768, mode = 'A' , layer_selection_mode = 'last6'):
+    def __init__(self, model_dim = 768, mode = 'A' , layer_selection_mode = 'last6', t5_name = "uer/t5-base-chinese-cluecorpussmall"):
         super(ASRModel, self).__init__()
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         # Acoustic Encoder
@@ -28,7 +28,7 @@ class ASRModel(nn.Module):
         # Decoder
         # Load the pre-trained embedding layer from the Chinese BERT model uer/t5-base-chinese-cluecorpussmall
         # t5_module = T5ForConditionalGeneration.from_pretrained("Langboat/mengzi-t5-base").to(device)
-        t5_module = T5ForConditionalGeneration.from_pretrained("uer/t5-base-chinese-cluecorpussmall").to(device)
+        t5_module = T5ForConditionalGeneration.from_pretrained(t5_name).to(device)
         
         decoder_module = t5_module.decoder
         self.vocab_size = decoder_module.config.vocab_size

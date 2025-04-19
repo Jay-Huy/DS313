@@ -67,3 +67,9 @@ Việc của Tường và Quân: Ở trên
 ---------------Not 16/4/2025----------------
 - Check lại cơ chế tokenizer của T5
 - Train 2 Epoch.
+
+---------------Note 19/4/2025----------------
+- 1h-3h: Làm lại hàm shift_left
+- 3h: Họp với HR
+- Sau đó: Code structure C
+- Tsau (T2 và T3): Đọc thông tin của học bổng
