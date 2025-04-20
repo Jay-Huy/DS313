@@ -152,7 +152,17 @@ def main():
             int: The epoch to resume training from.
         """
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+    
+        # Adjust state_dict if it was saved with nn.DataParallel
+        state_dict = checkpoint['model_state_dict']
+        if any(key.startswith("module.") for key in state_dict.keys()):
+            # Remove 'module.' prefix from keys
+            state_dict = {key[len("module."):]: value for key, value in state_dict.items()}
+            print("Adjusted state_dict to remove 'module.' prefix.")
+    
+        # Load the adjusted state_dict into the model
+        model.load_state_dict(state_dict)
+        # model.load_state_dict(checkpoint['model_state_dict'])
         # if optimizer:
         #     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if scheduler:
