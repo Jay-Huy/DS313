@@ -234,8 +234,8 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         
         if train:
             print(f"In Optimizing Process")
-            optimizer.zero_grad()
             loss.backward()
+            optimizer.zero_grad()
             optimizer.step()
             print(f"Out Optimizing Process\n")
 
