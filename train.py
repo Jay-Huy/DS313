@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--num_workers", type=int, default=1, help="Number of workers for DataLoader")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
     parser.add_argument("--optimizer", type=str, default="adamW", choices=["adam", "adamW"], help="Optimizer to use (adam or adamW)")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate for the optimizer")  # Added argument
     parser.add_argument("--subset", type=int, choices=[0, 1, 2], default = 0, required=True, help="Subset of train_dataloader to train on (0 or 1 or 2)")
     parser.add_argument("--save_path", type=str, default='checkpoint.pth', help="Path to save the model checkpoint")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to a trained checkpoint for continuous training")
@@ -152,8 +153,8 @@ def main():
         """
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
-        if optimizer:
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        # if optimizer:
+        #     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if scheduler:
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         print(f"Checkpoint loaded from {checkpoint_path}")
@@ -168,10 +169,10 @@ def main():
     # Initialize Criterion and Optimizer
     criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
     if args.optimizer == "adam":
-        optimizer = Adam(model.parameters())
+        optimizer = Adam(model.parameters(), lr=args.lr)
     elif args.optimizer == "adamW":
-        optimizer = AdamW(model.parameters())
-    print(f"Optimizer: {args.optimizer}")
+        optimizer = AdamW(model.parameters(), lr=args.lr)
+    print(f"Optimizer: {args.optimizer}, Learning Rate: {args.lr}")
 
     # Load Scheduler and Checkpoint
     start_epoch = 0
