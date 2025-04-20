@@ -166,12 +166,12 @@ def loss_fn(outputs, labels, cer_score, criterion, gamma=1.0, ignore_index=0):
 
     # Compute the base loss
     base_loss = criterion(outputs.mT, labels)  # Flatten outputs and labels
-    if base_loss < 1:
-        try: 
-            alpha = -(cer_score ** gamma) * torch.log(1 - cer_score + 1e-8)  # Add epsilon to avoid log(0)
-            base_loss = base_loss * alpha  # Apply alpha weight to the loss
-        except:
-            base_loss = base_loss # Avoid cer_score is bigger than 1
+    # if base_loss < 1:
+    #     try: 
+    #         alpha = -(cer_score ** gamma) * torch.log(1 - cer_score + 1e-8)  # Add epsilon to avoid log(0)
+    #         base_loss = base_loss * alpha  # Apply alpha weight to the loss
+    #     except:
+    #         base_loss = base_loss # Avoid cer_score is bigger than 1
 
     return base_loss
 
@@ -277,7 +277,7 @@ def train(model, tokenizer, train_dataloader, optimizer, criterion, scheduler, e
             train=True,
         )
 
-        scheduler.step()
+        # scheduler.step()
 
         print(f"Train - Loss: {train_metrics['mean_loss']:.4f}, CER: {train_metrics['mean_cer']:.4f}, Ignore Padding CER: {train_metrics['mean_ignore_padding_cer']:.4f}")
 
