@@ -230,12 +230,14 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         effective_cer_score = min(cer_score, ignore_padding_cer_score)
         print(f"Effective CER Score: {effective_cer_score}")
         loss = loss_fn(outputs, ground_truth_ids, effective_cer_score, criterion, ignore_index = tokenizer.pad_token_id)
-        print(f"Loss: {loss}\n")
+        print(f"Loss: {loss}")
         
         if train:
+            print(f"In Optimizing Process")
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            print(f"Out Optimizing Process\n")
 
         total_loss += loss.item()
         total_cer += cer_score
