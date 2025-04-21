@@ -210,6 +210,7 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
             print(f"Training input text: {training_input_text}\n")
 
         # Forward pass
+        optimizer.zero_grad()
         outputs = model(training_input_ids, attention_mask, downsampled_features)  # Batch_size, seq_length, vocab_size
 
         # Compute CER and loss
@@ -235,7 +236,6 @@ def step(model, tokenizer, data_loader, optimizer, criterion, device, cer, train
         if train:
             print(f"In Optimizing Process")
             loss.backward()
-            optimizer.zero_grad()
             optimizer.step()
             print(f"Out Optimizing Process\n")
 
