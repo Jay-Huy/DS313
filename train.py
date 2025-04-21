@@ -43,21 +43,19 @@ def main():
         exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
-    # TOKENIZER_NAME = "Langboat/mengzi-t5-base" google/mt5-base
-    # TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
-    TOKENIZER_NAME = "google/mt5-base"
     BATCH_SIZE = args.batch_size
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
     APPLY_SPEC_AUGMENT = True
+    TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load Tokenizer
     try: 
         # tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
-        # tokenizer = BertTokenizer.from_pretrained(TOKENIZER_NAME)
-        tokenizer = AutoTokenizer.from_pretrained("google/mt5-base")
+        tokenizer = BertTokenizer.from_pretrained(TOKENIZER_NAME)
+        # tokenizer = AutoTokenizer.from_pretrained("google/mt5-base")
         PAD_IDX = tokenizer.pad_token_id
         if PAD_IDX is None:
             exit("Vui lòng cấu hình pad token cho tokenizer.")
