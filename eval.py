@@ -1,12 +1,15 @@
 import os
 import torch
+from torch.optim import AdamW, Adam
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, T5Tokenizer, BertTokenizer
 from asr_model import ASRModel
 from evaluate import load
-from utils import inference
+from utils import train
 from dataset import AISHELL1Dataset, PadCollate, PretrainedVGGExtractor
 import argparse
+import torch.multiprocessing as mp
 import json  # Add this import
 
 def main():
@@ -33,7 +36,7 @@ def main():
         exit(f"Không tìm thấy thư mục con '{args.test_or_val}' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
-    TOKENIZER_NAME = "bert-base-chinese"
+    TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
     BATCH_SIZE = args.batch_size
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
@@ -42,7 +45,7 @@ def main():
 
     # Load Tokenizer
     try:
-        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
+        tokenizer = BertTokenizer.from_pretrained(TOKENIZER_NAME)
         PAD_IDX = tokenizer.pad_token_id
         if PAD_IDX is None:
             exit("Vui lòng cấu hình pad token cho tokenizer.")
