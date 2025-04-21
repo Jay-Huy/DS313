@@ -43,9 +43,9 @@ def main():
         exit(f"Không tìm thấy thư mục con 'train', 'dev', hoặc 'test' trong {AISHELL_WAV_ROOT}")
 
     # Configuration
-    # TOKENIZER_NAME = "Langboat/mengzi-t5-base"
-    TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
-    
+    # TOKENIZER_NAME = "Langboat/mengzi-t5-base" google/mt5-base
+    # TOKENIZER_NAME = "uer/t5-base-chinese-cluecorpussmall"
+    TOKENIZER_NAME = "google/mt5-base"
     BATCH_SIZE = args.batch_size
     NUM_WORKERS = args.num_workers
     RESHAPE_VGG_OUTPUT = True
@@ -175,7 +175,7 @@ def main():
     if torch.cuda.device_count() > 1: 
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = torch.nn.DataParallel(model)
-        
+    print(f'Model Params: {model.params}')
     # Initialize Criterion and Optimizer
     criterion = torch.nn.CrossEntropyLoss(ignore_index=PAD_IDX)
     if args.optimizer == "adam":
