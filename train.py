@@ -56,8 +56,8 @@ def main():
     # Load Tokenizer
     try: 
         # tokenizer = T5Tokenizer.from_pretrained(TOKENIZER_NAME)
-        tokenizer = BertTokenizer.from_pretrained(TOKENIZER_NAME)
-        
+        # tokenizer = BertTokenizer.from_pretrained(TOKENIZER_NAME)
+        tokenizer = AutoTokenizer.from_pretrained("google/mt5-base")
         PAD_IDX = tokenizer.pad_token_id
         if PAD_IDX is None:
             exit("Vui lòng cấu hình pad token cho tokenizer.")
