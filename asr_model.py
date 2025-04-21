@@ -6,7 +6,7 @@ from transformers import T5ForConditionalGeneration
 import torch
 
 class ASRModel(nn.Module):
-    def __init__(self, model_dim = 768, mode = 'A' , layer_selection_mode = 'last6', t5_name = "uer/t5-base-chinese-cluecorpussmall"):
+    def __init__(self, model_dim = 768, mode = 'A' , layer_selection_mode = 'last6', t5_name = "google/mt5-base"):
         super(ASRModel, self).__init__()
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         # Acoustic Encoder
