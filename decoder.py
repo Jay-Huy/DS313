@@ -358,10 +358,12 @@ class Decoder(nn.Module):
         else:
             _, seq_length = first_encoder_hidden_states.size(0), first_encoder_hidden_states.size(1)
             pos_encoding, _ = self.rope_positional_encoding(seq_length)
+            position_vector = self.dropout(first_encoder_hidden_states + pos_encoding[:seq_length, :]).to(self.device)
+            
             second_encoder_hidden_states = self.multihead_attention_layers[layer_index](
-                query=first_encoder_hidden_states,
-                key=pos_encoding,
-                value=pos_encoding,
+                query=position_vector,
+                key=first_encoder_hidden_states,
+                value=first_encoder_hidden_states,
             )
             cross_attention_outputs = layer_module.layer[1](  # Reuse the same layer
                 hidden_states,
